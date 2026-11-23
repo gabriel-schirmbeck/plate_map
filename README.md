@@ -1,7 +1,7 @@
 # Plate Map
+I was tired of making my maps on excel so i vibe coded this, added some options for curves from the protocols I had on hand
 
-A single-file web tool for planning **cell culture and assay plates** and printing a clean **A4 plate map** for the bench.
-No installation, no account, no server: open `index.html` in any browser.
+EDIT: just realized many aspects are similar to nitro-bio/platemap repository and website (and even some smarter options), i was not aware of that while doing, so could be a better option for you!
 
 ![The editor with a Lowry protein assay layout](docs/editor.png)
 
@@ -53,13 +53,3 @@ Click a picture to open the printed PDF. The realistic view on screen:
 2. Choose the plate size, then add a calibration curve, fill samples, or select wells and assign content.
 3. Fill in the experiment details on the sheet. Click any well to edit it by hand.
 4. Click **Print** and choose A4, portrait, with background graphics on.
-
-## Notes
-
-- Everything stays in your browser. Nothing is uploaded anywhere.
-- Saved plates and custom curves are stored per browser. They don't move between computers or browsers, and clearing site data removes them. Use **Export CSV** to keep a copy.
-- Check concentrations against your own protocol before use. The built-in curves follow the protocols they were taken from.
-
----
-
-Made by Gabriel Schirmbeck.
