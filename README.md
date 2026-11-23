@@ -3,6 +3,10 @@ I was tired of making my maps on excel so i vibe coded this, added some options 
 
 EDIT: just realized many aspects are similar to nitro-bio/platemap repository and website (and even some smarter options), i was not aware of that while doing, so could be a better option for you!
 
+
+### ⬇ [DOWNLOAD HERE](https://github.com/gabriel-schirmbeck/plate_map/releases/tag/0.1v)
+
+
 ![The editor with a Lowry protein assay layout](docs/editor.png)
 
 ## Features
