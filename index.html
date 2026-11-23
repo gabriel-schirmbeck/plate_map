@@ -1,0 +1,507 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Plate Map</title>
+<style>
+  :root { --ink:#1d2430; --muted:#5d6878; --line:#b9c2cf; --bg:#f6f8fb; --panel:#fff; --accent:#2f6fb3; --plate:#e4e9ef; --rim:#8e9aab; color-scheme: light; }
+  * { box-sizing: border-box; }
+  body { margin:0; font:14px/1.4 system-ui, "Segoe UI", sans-serif; background:var(--bg); color:var(--ink); padding:16px; }
+  h1 { font-size:20px; margin:0; }
+  h2 { font-size:15px; margin:6px 0 0; }
+  .wrap { display:grid; grid-template-columns: 300px 1fr; gap:16px; align-items:start; }
+  .panel { background:var(--panel); border:1px solid var(--line); border-radius:6px; padding:12px; display:grid; gap:8px; }
+  label { font-size:12px; color:var(--muted); display:grid; gap:2px; }
+  label.check { display:flex; gap:6px; align-items:center; color:var(--ink); font-size:13px; cursor:pointer; }
+  input, select, textarea, button { font:inherit; }
+  input, select, textarea { padding:4px 6px; border:1px solid var(--line); border-radius:4px; background:#fff; color:var(--ink); }
+  .panel :is(input:not([type=checkbox]):not([type=radio]), select, textarea) { width:100%; min-width:0; }
+  textarea#samples { height:140px; resize:vertical; }
+  .row2 { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+  button { padding:6px 10px; border:1px solid var(--accent); background:var(--accent); color:#fff; border-radius:4px; cursor:pointer; }
+  button.ghost { background:#fff; color:var(--accent); }
+  button:focus-visible, [contenteditable]:focus-visible, input:focus-visible { outline:2px solid var(--accent); outline-offset:1px; }
+  .btns { display:flex; flex-wrap:wrap; gap:6px; }
+  .sheet { background:var(--panel); border:1px solid var(--line); border-radius:6px; padding:16px; min-width:0; overflow-x:auto; }
+  .meta { display:grid; grid-template-columns: repeat(4, 1fr); gap:6px 8px; margin-bottom:10px; }
+  .meta label { font-size:10px; text-transform:uppercase; letter-spacing:.04em; }
+  .meta input { width:100%; font-weight:600; }
+  .meta .wide { grid-column: span 2; }
+
+  /* --h: well row height, --fs: well text size; both set per plate size */
+  #plate { --h: calc(480px / var(--nr)); border-collapse:collapse; width:100%; table-layout:fixed; min-width:640px; }
+  th { font-size:13px; color:var(--muted); font-weight:600; padding:2px; }
+  th.r { width:24px; }
+  td { border:1px solid var(--line); height:var(--h); padding:0; vertical-align:middle; position:relative; }
+  td .id { position:absolute; top:1px; left:3px; font-size:9px; color:#8a94a3; pointer-events:none; }
+  td .txt { height:100%; padding:12px 3px 2px; font-size:var(--fs); line-height:1.2; word-break:break-word; overflow:hidden; text-align:center; }
+  /* realistic plate: grey plate body, round recessed wells */
+  #plate.real { border-collapse:separate; border-spacing:3px; background:var(--plate); border:2px solid #b8c1cd; border-radius:16px; padding:6px; }
+  #plate.real td { border:none; }
+  #plate.real td .id { display:none; }
+  #plate.real td .txt { width:min(100%, calc(var(--h) - 4px)); height:auto; aspect-ratio:1; margin:0 auto; border-radius:50%;
+    border:1.5px solid var(--rim); background-color:#fff; box-shadow:inset 0 2px 5px rgba(0,0,0,.18);
+    display:flex; flex-direction:column; justify-content:center; padding:3px; }
+
+  th { cursor:pointer; user-select:none; }
+  th:hover { color:var(--accent); }
+  td.sel { outline:2px solid var(--accent); outline-offset:-2px; }
+  #plate.real td.sel { outline:none; }
+  #plate.real td.sel .txt { box-shadow:0 0 0 3px var(--accent); }
+  #plate.dragging, #plate.dragging * { user-select:none; cursor:cell; }
+  .legend { display:grid; grid-template-columns:repeat(auto-fill, minmax(170px, 1fr)); gap:3px 14px; margin-top:10px; font-size:11px; line-height:1.3; }
+  .legend .sw { display:inline-block; width:10px; height:10px; border-radius:2px; margin-right:4px; vertical-align:-1px; border:1px solid var(--line); }
+  .legend small { color:var(--muted); }
+  textarea#notes { width:100%; height:60px; margin-top:10px; }
+  .hint { font-size:12px; color:var(--muted); margin:0; }
+  #calc { font-size:12px; margin:0; font-variant-numeric:tabular-nums; }
+  .credit { margin:8px 0 0; font-size:10px; color:var(--muted); text-align:right; }
+  .presets { display:grid; gap:3px; }
+  .presets label { display:flex; gap:6px; align-items:center; color:var(--ink); font-size:13px; cursor:pointer; }
+  .presets small { color:var(--muted); }
+  .presets .del { margin-left:auto; padding:0 6px; border:none; background:none; color:var(--muted); font-size:15px; line-height:1; }
+  .presets .del:hover { color:#b3261e; }
+  @media (max-width:800px){ .wrap{grid-template-columns:1fr;} .meta{grid-template-columns:1fr 1fr;} }
+
+  /* A4 portrait: 190 mm usable width, plate grid kept to 150 mm tall so everything fits one page */
+  @page { size: A4 portrait; margin: 10mm; }
+  @media print {
+    html, body { background:#fff; padding:0; width:190mm; }
+    .wrap { display:block; }
+    .panel, .hint { display:none; }
+    .sheet { border:none; padding:0; overflow:visible; break-inside:avoid; }
+    .meta { grid-template-columns: repeat(4, 1fr); gap:2px 8px; }
+    .meta .title { grid-column: 1 / -1; }
+    .meta .title input { font-size:16px; }
+    /* empty fields and notes are left off the printout */
+    .meta label:has(input:placeholder-shown), .noprint { display:none; }
+    .legend:not(.noprint):not([hidden]) { display:grid; grid-template-columns:repeat(3, 1fr); }
+    input[type=date]::-webkit-calendar-picker-indicator { display:none; }
+    th[data-all] { visibility:hidden; }
+    /* real plate: square wells sized to the column; grid: rows only as tall as their text, at least half a square */
+    #plate { --h: min(150mm / var(--nr), 184mm / var(--nc)); min-width:0; width:190mm; }
+    #plate:not(.real) td { height:1px; } /* lets .txt fill the cell height so the colour has no gaps */
+    #plate:not(.real) td .txt { height:100%; min-height:calc(var(--h) * .75); }
+    #plate td .txt { font-size:calc(var(--fs) + 2px); }
+    th.r { width:6mm; }
+    .meta input { border:none; padding:0; }
+    /* notes: typed text, then ruled lines for handwriting at the bench */
+    textarea#notes { min-height:40mm; field-sizing:content; resize:none; border:1px solid var(--line); border-radius:4px; padding:2mm 3mm;
+      line-height:7mm; background:repeating-linear-gradient(#fff 0 calc(7mm - 1px), #dfe4ea calc(7mm - 1px) 7mm); background-position:0 2mm; }
+    td.sel { outline:none; }
+    #plate.real td.sel .txt { box-shadow:inset 0 2px 5px rgba(0,0,0,.18); }
+    * { -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="panel">
+    <h1>Plate map</h1>
+    <div class="row2">
+      <label>Plate size
+        <select id="size"><option>6</option><option>12</option><option>24</option><option>48</option><option selected>96</option></select></label>
+      <label class="check" style="align-self:end"><input type="checkbox" id="real"> Realistic plate</label>
+    </div>
+
+    <h2>Samples</h2>
+    <label>Samples / treatments (one per line)
+      <textarea id="samples">Control
+Vehicle
+Treatment 1
+Treatment 2
+Treatment 3</textarea></label>
+    <div class="row2">
+      <label>Start well <input id="start" value="A1"></label>
+      <label>Replicates <input id="reps" type="number" min="1" max="96" value="3"></label>
+    </div>
+    <label>Fill direction
+      <select id="dir"><option value="row">Across rows (A1, A2, A3…)</option><option value="col">Down columns (A1, B1, C1…)</option><option value="pairs">Replicates side by side, samples down (A1–A2, B1–B2…)</option></select></label>
+    <div class="btns">
+      <button id="fill">Fill plate</button>
+      <button class="ghost" id="clear">Clear all</button>
+    </div>
+
+    <h2>Selected wells</h2>
+    <p class="hint">Drag across wells, click a row letter or column number, or click the corner for the whole plate. Shift-click extends from the last well. Esc clears.</p>
+    <p id="selinfo" class="hint"></p>
+    <label>Content for selected wells <input id="sellabel" placeholder="e.g. Treatment 1 – 10 µM"></label>
+    <div class="btns">
+      <button id="assign">Assign to selected</button>
+      <button class="ghost" id="unassign">Empty selected</button>
+    </div>
+
+    <h2>Cell culture</h2>
+    <label class="check"><input type="checkbox" id="edge"> Keep outer wells for buffer (edge effect)</label>
+    <label>Outer-well content <input id="edgelabel" value="PBS"></label>
+    <p id="calc"></p>
+
+    <h2>Calibration curve</h2>
+    <p class="hint">Blank in A1–A2, then standards in duplicate down columns 1–2 (B1–B2, C1–C2…), lowest to highest. Longer curves continue in columns 3–4.</p>
+    <div class="presets" id="presets"></div>
+    <p class="hint">Or make your own. It is saved to the list above and stays there after closing the page.</p>
+    <label>Curve name <input id="cname" placeholder="e.g. ELISA IL-6"></label>
+    <label>Own values, lowest first (optional, separate with ; or spaces) <input id="cvals" placeholder="e.g. 0,5; 1; 2,5; 5; 10"></label>
+    <p class="hint">If no values are given, a serial dilution is made from:</p>
+    <div class="row2">
+      <label>Top concentration <input id="ctop" type="number" min="0" step="any" value="100"></label>
+      <label>Unit <input id="cunit" value="µg/mL"></label>
+      <label>Dilution factor <input id="cdil" type="number" min="1.01" step="any" value="2"></label>
+      <label>Standards (1–15) <input id="cn" type="number" min="1" max="15" value="7"></label>
+    </div>
+    <div class="btns"><button id="curve">Save &amp; add curve</button><button class="ghost" id="nocurve">Remove curve</button></div>
+
+    <h2>Output</h2>
+    <label class="check"><input type="checkbox" id="color" checked> Color wells by sample</label>
+    <label class="check"><input type="checkbox" id="legendon" checked> Print the sample list under the plate</label>
+    <div class="btns">
+      <button class="ghost" id="csv">Export CSV</button>
+      <button id="print">Print</button>
+    </div>
+    <p class="hint">Click any well to type in it directly. Everything is saved in this browser automatically.</p>
+  </div>
+
+  <div class="sheet">
+    <div class="meta">
+      <label class="wide title">Experiment <input id="title" placeholder="Experiment / plate name"></label>
+      <label>Date <input id="date" type="date"></label>
+      <label>Operator <input id="who"></label>
+      <label>Cell type / line <input id="cells" placeholder="e.g. primary astrocytes"></label>
+      <label>Passage <input id="passage" placeholder="P"></label>
+      <label>Seeding (cells/well) <input id="dens" inputmode="numeric" placeholder="e.g. 20000"></label>
+      <label>Volume/well <input id="vol"></label>
+      <label class="wide">Medium <input id="medium" placeholder="e.g. DMEM 10% FBS"></label>
+      <label>Treatment time <input id="ttime" placeholder="e.g. 24 h"></label>
+      <label>Incubator <input id="incub" placeholder="37 °C, 5% CO₂"></label>
+    </div>
+    <table id="plate"></table>
+    <div id="legend" class="legend"></div>
+    <textarea id="notes" placeholder="Notes (reagents, volumes, incubation…)"></textarea>
+    <p class="credit" id="credit"></p>
+  </div>
+</div>
+
+<script>
+const ROWS = "ABCDEFGH", KEY = "plate-map-v1";
+const SIZES = { 6:[2,3], 12:[3,4], 24:[4,6], 48:[6,8], 96:[8,12] };      // rows × columns
+const VOL   = { 6:"2 mL", 12:"1 mL", 24:"500 µL", 48:"250 µL", 96:"100 µL" }; // typical working volume
+const FONT  = { 6:16, 12:15, 24:13, 48:11, 96:10 };                        // well text px
+const FIELDS = ["samples","start","reps","dir","title","date","who","notes","ctop","cunit","cdil","cn","cname","cvals",
+                "cells","passage","dens","vol","medium","ttime","incub","edgelabel"];
+const $ = id => document.getElementById(id);
+const plate = $("plate");
+let NR, NC, wells = [];
+let curve = [], edge = [];   // well names (e.g. "A1") reserved for the calibration curve / outer buffer wells
+const name = i => ROWS[Math.floor(i / NC)] + (i % NC + 1);
+const snapshot = () => Object.fromEntries(wells.map((w, i) => [name(i), w.innerText.trim()]).filter(e => e[1]));
+
+// build the grid for a plate size, keeping the text of wells that still exist
+function build(size, keep) {
+  [NR, NC] = SIZES[size];
+  plate.style.setProperty("--nr", NR);
+  plate.style.setProperty("--fs", FONT[size] + "px");
+  let html = "<tr><th class='r' data-all title='Select whole plate'>⊞</th>" + Array.from({length:NC}, (_, c) => `<th data-c="${c}">${c+1}</th>`).join("") + "</tr>";
+  for (let r = 0; r < NR; r++) {
+    html += `<tr><th class="r" data-r="${r}">${ROWS[r]}</th>`;
+    for (let c = 0; c < NC; c++) html += `<td><span class="id">${ROWS[r]}${c+1}</span><div class="txt" contenteditable="true" aria-label="Well ${ROWS[r]}${c+1}"></div></td>`;
+    html += "</tr>";
+  }
+  plate.innerHTML = html;
+  wells = [...plate.querySelectorAll(".txt")]; // index = r*NC + c
+  wells.forEach((w, i) => w.innerText = keep[name(i)] || "");
+  const all = wells.map((_, i) => name(i));
+  curve = curve.filter(n => all.includes(n));
+  $("credit").textContent = `${size}-well plate map · Gabriel Schirmbeck`;
+  $("vol").placeholder = VOL[size];
+  $("reps").max = NR * NC;
+  sel = new Set(); anchor = -1; showSel();
+}
+
+// ---- well selection: drag a rectangle, click row/column headers, shift-click to extend ----
+let sel = new Set(), anchor = -1, dragging = false, moved = false;
+const cellIndex = el => { const td = el.closest("td"); return td ? wells.indexOf(td.querySelector(".txt")) : -1; };
+function rect(a, b) {
+  const [r1, r2] = [Math.floor(a/NC), Math.floor(b/NC)].sort((x, y) => x - y);
+  const [c1, c2] = [a%NC, b%NC].sort((x, y) => x - y);
+  const s = new Set();
+  for (let r = r1; r <= r2; r++) for (let c = c1; c <= c2; c++) s.add(r*NC + c);
+  return s;
+}
+function showSel() {
+  wells.forEach((w, i) => w.parentElement.classList.toggle("sel", sel.has(i)));
+  const list = [...sel].sort((a, b) => a - b);
+  $("selinfo").textContent = list.length ? `${list.length} well${list.length > 1 ? "s" : ""} selected (${name(list[0])}${list.length > 1 ? "–" + name(list.at(-1)) : ""})` : "No wells selected.";
+}
+plate.addEventListener("mousedown", e => {
+  const th = e.target.closest("th");
+  if (th) {
+    e.preventDefault();
+    const all = wells.map((_, i) => i);
+    sel = new Set("all" in th.dataset ? all : "r" in th.dataset ? all.filter(i => Math.floor(i/NC) === +th.dataset.r) : all.filter(i => i%NC === +th.dataset.c));
+    showSel(); return;
+  }
+  const i = cellIndex(e.target);
+  if (i < 0) return;
+  if (e.shiftKey && anchor >= 0) { e.preventDefault(); sel = rect(anchor, i); showSel(); return; }
+  anchor = i; dragging = true; moved = false;
+});
+plate.addEventListener("mouseover", e => {
+  if (!dragging) return;
+  const i = cellIndex(e.target);
+  if (i < 0 || (i === anchor && !moved)) return;
+  if (!moved) { moved = true; plate.classList.add("dragging"); document.activeElement.blur(); }
+  window.getSelection().removeAllRanges();
+  sel = rect(anchor, i); showSel();
+});
+document.addEventListener("mouseup", () => {
+  if (dragging && !moved && sel.size) { sel = new Set(); showSel(); } // plain click = edit that well
+  dragging = false; plate.classList.remove("dragging");
+});
+document.addEventListener("keydown", e => { if (e.key === "Escape" && sel.size) { sel = new Set(); showSel(); } });
+
+function setSelected(text) {
+  if (!sel.size) { $("selinfo").textContent = "Select wells on the plate first."; return; }
+  const names = [...sel].map(name);
+  sel.forEach(i => wells[i].innerText = text);
+  curve = curve.filter(n => !names.includes(n)); // explicitly assigned wells stop being curve/buffer wells
+  edge = edge.filter(n => !names.includes(n));
+  paint(); save();
+}
+console.assert((NC = 12, rect(13, 39).size === 9), "selection rectangle self-check"); // B2–D4 on a 96-well plate
+
+// well order for a direction, as row-major indices
+function order(dir) {
+  const out = [];
+  if (dir === "row") for (let r = 0; r < NR; r++) for (let c = 0; c < NC; c++) out.push(r*NC+c);
+  else for (let c = 0; c < NC; c++) for (let r = 0; r < NR; r++) out.push(r*NC+c);
+  return out;
+}
+function parseWell(s) {
+  const m = /^([A-H])\s*(\d{1,2})$/i.exec(s.trim());
+  const r = m ? ROWS.indexOf(m[1].toUpperCase()) : -1;
+  if (r < 0 || r >= NR || +m[2] < 1 || +m[2] > NC) return -1;
+  return r*NC + (+m[2]-1);
+}
+function edgeNames() {
+  return wells.map((_, i) => i).filter(i => { const r = Math.floor(i/NC), c = i%NC; return r === 0 || c === 0 || r === NR-1 || c === NC-1; }).map(name);
+}
+
+function hue(s) { let h = 0; for (const ch of s) h = (h*31 + ch.charCodeAt(0)) >>> 0; return h % 360; }
+function paint() {
+  const on = $("color").checked;
+  wells.forEach(w => { const t = w.innerText.trim(); w.style.backgroundColor = on && t ? `hsl(${hue(t)} 70% 86%)` : ""; });
+  // legend: each distinct content with its colour and wells, column by column (curve first, then samples)
+  const groups = new Map();
+  order("col").forEach(i => { const t = wells[i].innerText.trim(); if (t) groups.set(t, [...(groups.get(t) || []), name(i)]); });
+  $("legend").hidden = !groups.size;
+  $("legend").classList.toggle("noprint", !$("legendon").checked); // always on screen; printed only when ticked
+  $("legend").innerHTML = [...groups].map(([t, ws]) =>
+    `<div><span class="sw" style="background:${on ? `hsl(${hue(t)} 70% 86%)` : "#fff"}"></span><b>${esc(t.replace(/\n/g, " "))}</b> <small>${ws.join(", ")}</small></div>`).join("");
+  // seeding helper: wells holding cells = filled wells that are not curve or buffer wells
+  const n = wells.filter((w, i) => w.innerText.trim() && !curve.includes(name(i)) && !edge.includes(name(i))).length;
+  const d = parseFloat($("dens").value.replace(/[\s,']/g, ""));
+  $("calc").textContent = d > 0
+    ? `${n} wells × ${d.toLocaleString()} cells = ${(n*d).toLocaleString()} cells (+10%: ${Math.round(n*d*1.1).toLocaleString()})`
+    : `${n} wells with samples. Enter seeding (cells/well) on the sheet to get the total cells needed.`;
+}
+
+function save() {
+  try {
+    localStorage.setItem(KEY, JSON.stringify({
+      size: $("size").value, map: snapshot(), curve, edge,
+      f: Object.fromEntries(FIELDS.map(k => [k, $(k).value])),
+      color: $("color").checked, legendOn: $("legendon").checked, real: $("real").checked, edgeOn: $("edge").checked
+    }));
+  } catch {}
+}
+function load() {
+  let d = null;
+  try { d = JSON.parse(localStorage.getItem(KEY)); } catch {}
+  if (d && !d.map && d.wells) { // older 96-only save: array of 96 texts
+    d.map = {}; d.wells.forEach((t, i) => { if (t) d.map[ROWS[Math.floor(i/12)] + (i%12+1)] = t; });
+    d.curve = (d.curveWells || []).map(i => ROWS[Math.floor(i/12)] + (i%12+1));
+  }
+  d = d || {};
+  if (SIZES[d.size]) $("size").value = d.size;
+  curve = d.curve || []; edge = d.edge || [];
+  for (const k in d.f || {}) if ($(k)) $(k).value = d.f[k];
+  if ("color" in d) $("color").checked = d.color;
+  if ("legendOn" in d) $("legendon").checked = d.legendOn;
+  $("real").checked = !!d.real; $("edge").checked = !!d.edgeOn;
+  build($("size").value, d.map || {});
+  plate.classList.toggle("real", $("real").checked);
+}
+
+// outer buffer wells: label them and keep sample fill out; never overwrite curve wells
+function applyEdge() {
+  const label = $("edgelabel").value.trim() || "PBS";
+  wells.forEach((w, i) => { if (edge.includes(name(i)) && !curve.includes(name(i))) w.innerText = ""; });
+  edge = [];
+  if ($("edge").checked) {
+    edge = edgeNames().filter(n => !curve.includes(n));
+    if (edge.length === wells.length) { alert("Every well of this plate is an outer well. Use a 24-well plate or larger."); $("edge").checked = false; edge = []; }
+    edge.forEach(n => wells[wells.findIndex((_, i) => name(i) === n)].innerText = label);
+  }
+  const s = parseWell($("start").value);
+  if (s >= 0 && edge.includes(name(s))) $("start").value = "B2";
+}
+
+$("fill").onclick = () => {
+  const names = $("samples").value.split("\n").map(s => s.trim()).filter(Boolean);
+  const reps = Math.max(1, parseInt($("reps").value) || 1);
+  const start = parseWell($("start").value);
+  if (start < 0) { $("start").setCustomValidity(`Use a well between A1 and ${ROWS[NR-1]}${NC}`); $("start").reportValidity(); return; }
+  $("start").setCustomValidity("");
+  const free = i => !curve.includes(name(i)) && !edge.includes(name(i));
+  if ($("dir").value === "pairs") {
+    // each sample takes one row of `reps` adjacent wells; samples go down, then on to the next block of columns
+    const r0 = Math.floor(start / NC), c0 = start % NC, slots = [];
+    for (let c = c0; c + reps <= NC; c += reps)
+      for (let r = (c === c0 ? r0 : 0); r < NR; r++) {
+        const s = Array.from({length:reps}, (_, k) => r*NC + c + k);
+        if (s.every(free)) slots.push(s);
+      }
+    names.slice(0, slots.length).forEach((n, k) => slots[k].forEach(i => wells[i].innerText = n));
+    if (names.length > slots.length) alert(`Plate full: ${names.length - slots.length} sample(s) did not fit.`);
+    paint(); save(); return;
+  }
+  const ord = order($("dir").value);
+  const seq = ord.slice(ord.indexOf(start)).filter(i => !curve.includes(name(i)) && !edge.includes(name(i))); // never overwrite curve or buffer wells
+  const items = names.flatMap(n => Array(reps).fill(n));
+  items.slice(0, seq.length).forEach((n, k) => wells[seq[k]].innerText = n);
+  if (items.length > seq.length) alert(`Plate full: ${items.length - seq.length} well(s) did not fit.`);
+  paint(); save();
+};
+
+// serial dilution, lowest first: top / dil^(n-1) … top
+function serial(top, dil, n) {
+  return Array.from({length:n}, (_, k) => +(top / dil ** (n-1-k)).toPrecision(4));
+}
+
+// standard curves from the bench protocols (Pasta Bancada 2017), lowest first, blank excluded
+const PRESETS = [
+  ["Lowry – proteins", "µg", [2,5,10,15,20,25,30,35,40]],
+  ["ELISA GFAP", "ng", [0.1,0.25,0.5,0.75,1,5,7.5,10]],
+  ["ELISA S100B – protocol 1", "ng/mL", serial(1, 2, 10)],
+  ["ELISA S100B – protocol 2", "ng/mL", serial(10, 2, 10)],
+  ["GS activity", "mM", serial(10, 2, 7)],
+  ["GSH", "µM", serial(500, 2, 10)],
+];
+
+// curve point k (0 = blank) goes in duplicate down a pair of columns: k=0 → A1/A2, k=NR → A3/A4
+function placeCurve(unit, values) {
+  const labels = ["Blank", ...values.map((c, k) => `Std ${k+1}\n${c} ${unit}`)];
+  if (2 * Math.ceil(labels.length / NR) > NC) { alert(`This curve needs ${labels.length * 2} wells in column pairs and does not fit a ${NR*NC}-well plate.`); return false; }
+  wells.forEach((w, i) => { if (curve.includes(name(i))) w.innerText = ""; }); // drop the previous curve
+  curve = [];
+  labels.forEach((t, k) => {
+    const i = (k % NR) * NC + 2 * Math.floor(k / NR);
+    wells[i].innerText = wells[i+1].innerText = t;
+    curve.push(name(i), name(i+1));
+  });
+  edge = edge.filter(n => !curve.includes(n));
+  const s = parseWell($("start").value);
+  if (s < 0 || curve.includes(name(s))) $("start").value = "A" + (2 * Math.ceil(labels.length / NR) + 1); // keep sample fill off the curve
+  paint(); save();
+  return true;
+}
+const uncheckPresets = () => document.querySelectorAll("[name=preset]").forEach(r => r.checked = false);
+
+// user-made curves, kept under their own key so "Clear all" never deletes them
+const CKEY = "plate-map-curves";
+let saved = [];
+try { saved = JSON.parse(localStorage.getItem(CKEY)) || []; } catch {}
+const allCurves = () => [...PRESETS, ...saved.map(c => [c.name, c.unit, c.values])];
+const esc = s => String(s).replace(/[&<>"]/g, ch => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"})[ch]);
+function renderPresets() {
+  $("presets").innerHTML = allCurves().map(([n, unit, v], p) =>
+    `<label><input type="radio" name="preset" value="${p}"> ${esc(n)} <small>${v.length} pts, ${v[0]}–${v.at(-1)} ${esc(unit)}</small>` +
+    (p >= PRESETS.length ? `<button class="del" data-del="${p - PRESETS.length}" title="Delete this saved curve" aria-label="Delete ${esc(n)}">×</button>` : "") + `</label>`).join("");
+}
+renderPresets();
+$("presets").onchange = e => { const [, unit, v] = allCurves()[e.target.value]; if (!placeCurve(unit, v)) e.target.checked = false; };
+$("presets").onclick = e => {
+  const b = e.target.closest("[data-del]");
+  if (!b) return;
+  e.preventDefault();
+  if (!confirm(`Delete the saved curve "${saved[b.dataset.del].name}"? Wells already on the plate stay.`)) return;
+  saved.splice(+b.dataset.del, 1);
+  try { localStorage.setItem(CKEY, JSON.stringify(saved)); } catch {}
+  renderPresets();
+};
+
+// "0,5; 1 2,5" → [0.5, 1, 2.5]; decimal comma or point
+const parseValues = s => s.split(/[;\s]+/).filter(Boolean).map(t => parseFloat(t.replace(",", ".")));
+console.assert(parseValues("0,5; 1 2.5").join() === "0.5,1,2.5", "value list self-check");
+
+$("curve").onclick = () => {
+  const unit = $("cunit").value.trim();
+  let values;
+  if ($("cvals").value.trim()) {
+    values = parseValues($("cvals").value);
+    if (values.some(v => !(v >= 0))) { alert("Own values must be numbers, separated with ; or spaces."); return; }
+  } else {
+    const top = parseFloat($("ctop").value), dil = parseFloat($("cdil").value);
+    const n = Math.min(15, Math.max(1, parseInt($("cn").value) || 1));
+    if (!(top > 0) || !(dil > 1)) { alert("Top concentration must be > 0 and dilution factor > 1."); return; }
+    values = serial(top, dil, n);
+  }
+  if (!placeCurve(unit, values)) return;
+  const nm = $("cname").value.trim() || `Custom ${values[0]}–${values.at(-1)} ${unit}`;
+  saved = saved.filter(c => c.name !== nm).concat({ name: nm, unit, values }); // same name replaces the old one
+  try { localStorage.setItem(CKEY, JSON.stringify(saved)); } catch {}
+  renderPresets();
+  const idx = allCurves().findIndex(c => c[0] === nm);
+  document.querySelector(`[name=preset][value="${idx}"]`).checked = true;
+};
+
+$("assign").onclick = () => setSelected($("sellabel").value.trim());
+$("unassign").onclick = () => setSelected("");
+$("sellabel").onkeydown = e => { if (e.key === "Enter") $("assign").click(); };
+$("nocurve").onclick = () => {
+  wells.forEach((w, i) => { if (curve.includes(name(i))) w.innerText = ""; });
+  curve = [];
+  uncheckPresets();
+  if ($("edge").checked) applyEdge(); // outer wells freed by the curve go back to buffer
+  paint(); save();
+};
+$("size").onchange = () => {
+  const keep = snapshot();
+  build($("size").value, keep);
+  if (parseWell($("start").value) < 0) $("start").value = "A1";
+  applyEdge(); paint(); save();
+};
+$("real").onchange = () => { plate.classList.toggle("real", $("real").checked); save(); };
+$("edge").onchange = () => { applyEdge(); paint(); save(); };
+$("edgelabel").onchange = () => { if ($("edge").checked) { applyEdge(); paint(); save(); } };
+$("clear").onclick = () => {
+  if (!confirm("Clear all wells?")) return;
+  wells.forEach(w => w.innerText = ""); curve = []; edge = []; $("edge").checked = false; uncheckPresets(); paint(); save();
+};
+$("print").onclick = () => window.print();
+$("csv").onclick = () => {
+  const lines = ["Well,Row,Column,Content"];
+  wells.forEach((w, i) => {
+    const r = ROWS[Math.floor(i/NC)], c = i%NC + 1;
+    lines.push(`${r}${c},${r},${c},"${w.innerText.trim().replace(/\n/g, " ").replace(/"/g, '""')}"`);
+  });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([lines.join("\n")], {type:"text/csv"}));
+  a.download = ($("title").value.trim() || "plate-map") + ".csv";
+  a.click();
+};
+$("color").onchange = () => { paint(); save(); };
+$("legendon").onchange = () => { paint(); save(); };
+document.addEventListener("input", () => { paint(); save(); });
+
+load();
+if (!$("date").value) $("date").valueAsDate = new Date();
+paint();
+
+// self-checks
+console.assert(serial(100, 2, 3).join() === "25,50,100", "serial dilution self-check");
+console.assert(NR !== 8 || (order("col")[1] === 12 && parseWell("h12") === 95 && parseWell("I1") === -1), "96-well order self-check");
+</script>
+</body>
+</html>
